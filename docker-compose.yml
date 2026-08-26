@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: auth-service-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: authdb
+      POSTGRES_USER: ${POSTGRES_USER:-authdb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-authdb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  auth-service:
+    build:
+      context: .
+    container_name: auth-service
+    ports:
+      - "${HTTP_PORT:-8090}:8090"
+    environment:
+      - HTTP_PORT=8090
+      - DATABASE_URL=postgres://${POSTGRES_USER:-authdb}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/authdb?sslmode=disable
+      - JWT_PRIVATE_KEY_PATH=/app/keys/private.pem
+      - JWT_PUBLIC_KEY_PATH=/app/keys/public.pem
+      - ACCESS_TOKEN_TTL_SECONDS=${ACCESS_TOKEN_TTL_SECONDS:-300}
+      - REFRESH_TOKEN_TTL_SECONDS=${REFRESH_TOKEN_TTL_SECONDS:-2592000}
+      - AUTH_ISSUER=${AUTH_ISSUER:-auth-service}
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-changeme-admin-key}
+    volumes:
+      - auth_keys:/app/keys
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8090/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  postgres_data:
+  auth_keys:
