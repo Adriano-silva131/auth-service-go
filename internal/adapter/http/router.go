@@ -5,10 +5,30 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/adriano-linux/auth-service-go/internal/adapter/http/handler"
 	authjwt "github.com/adriano-linux/auth-service-go/internal/adapter/jwt"
 )
+
+// noTraceRoutes are excluded from tracing — pure infrastructure traffic (liveness/
+// readiness probes, Prometheus scraping) with no diagnostic value in a trace backend.
+var noTraceRoutes = map[string]bool{
+	"/healthz": true,
+	"/readyz":  true,
+	"/metrics": true,
+}
+
+func tracingMiddleware() func(http.Handler) http.Handler {
+	return otelhttp.NewMiddleware("auth-service",
+		otelhttp.WithFilter(func(r *http.Request) bool {
+			return !noTraceRoutes[r.URL.Path]
+		}),
+		otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string {
+			return r.Method + " " + r.URL.Path
+		}),
+	)
+}
 
 type RouterDeps struct {
 	Register   *handler.RegisterHandler
@@ -26,7 +46,7 @@ type RouterDeps struct {
 
 func NewRouter(deps RouterDeps) http.Handler {
 	r := chi.NewRouter()
-	r.Use(Recoverer, RequestLogger)
+	r.Use(Recoverer, tracingMiddleware(), RequestLogger)
 
 	r.Get("/healthz", deps.Health.Liveness)
 	r.Get("/readyz", deps.Health.Readiness)

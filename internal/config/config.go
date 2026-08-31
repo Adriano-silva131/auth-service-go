@@ -20,6 +20,10 @@ type Config struct {
 	Issuer string `env:"AUTH_ISSUER" envDefault:"orderhub-auth-service"`
 
 	AdminAPIKey string `env:"ADMIN_API_KEY,required"`
+
+	OtelExporterOtlpEndpoint string  `env:"OTEL_EXPORTER_OTLP_ENDPOINT" envDefault:"http://otel-collector:4317"`
+	OtelServiceName          string  `env:"OTEL_SERVICE_NAME" envDefault:"auth-service"`
+	OtelTracesSampleRate     float64 `env:"OTEL_TRACES_SAMPLE_RATE" envDefault:"1.0"`
 }
 
 func Load() (*Config, error) {

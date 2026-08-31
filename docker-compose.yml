@@ -32,6 +32,9 @@ services:
       - REFRESH_TOKEN_TTL_SECONDS=${REFRESH_TOKEN_TTL_SECONDS:-2592000}
       - AUTH_ISSUER=${AUTH_ISSUER:-auth-service}
       - ADMIN_API_KEY=${ADMIN_API_KEY:-changeme-admin-key}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://host.docker.internal:4317}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - auth_keys:/app/keys
     depends_on:

@@ -15,13 +15,15 @@ import (
 	httptransport "github.com/adriano-linux/auth-service-go/internal/adapter/http"
 	"github.com/adriano-linux/auth-service-go/internal/adapter/http/handler"
 	authjwt "github.com/adriano-linux/auth-service-go/internal/adapter/jwt"
+	"github.com/adriano-linux/auth-service-go/internal/adapter/logging"
+	oteladapter "github.com/adriano-linux/auth-service-go/internal/adapter/otel"
 	"github.com/adriano-linux/auth-service-go/internal/adapter/postgres"
 	"github.com/adriano-linux/auth-service-go/internal/config"
 	"github.com/adriano-linux/auth-service-go/internal/usecase"
 )
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	slog.SetDefault(slog.New(logging.NewTraceHandler(slog.NewJSONHandler(os.Stdout, nil))))
 
 	if err := run(); err != nil {
 		slog.Error("fatal startup error", "error", err)
@@ -37,6 +39,18 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	shutdownTracing, err := oteladapter.Setup(ctx, cfg.OtelExporterOtlpEndpoint, cfg.OtelServiceName, cfg.OtelTracesSampleRate)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTracing(shutdownCtx); err != nil {
+			slog.Error("error shutting down tracer provider", "error", err)
+		}
+	}()
 
 	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
