@@ -35,6 +35,7 @@ func TestAuthFlow_RealPostgres(t *testing.T) {
 		postgres.WithInitScripts(
 			"../../migrations/000001_create_users_table.up.sql",
 			"../../migrations/000002_create_refresh_tokens_table.up.sql",
+			"../../migrations/000003_add_roles_to_users.up.sql",
 		),
 	)
 	require.NoError(t, err)
@@ -43,12 +44,14 @@ func TestAuthFlow_RealPostgres(t *testing.T) {
 	connStr, err := container.ConnectionString(ctx, "sslmode=disable")
 	require.NoError(t, err)
 
-	pool, err := pg.NewPool(ctx, connStr)
+	db, err := pg.NewGormDB(ctx, connStr)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
 
-	userRepo := pg.NewUserRepository(pool)
-	tokenRepo := pg.NewRefreshTokenRepository(pool)
+	userRepo := pg.NewUserRepository(db)
+	tokenRepo := pg.NewRefreshTokenRepository(db)
 	hasher := hash.NewBcryptHasher()
 
 	dir := t.TempDir()

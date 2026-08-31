@@ -5,15 +5,15 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"gorm.io/gorm"
 )
 
 type HealthHandler struct {
-	pool *pgxpool.Pool
+	db *gorm.DB
 }
 
-func NewHealthHandler(pool *pgxpool.Pool) *HealthHandler {
-	return &HealthHandler{pool: pool}
+func NewHealthHandler(db *gorm.DB) *HealthHandler {
+	return &HealthHandler{db: db}
 }
 
 func (h *HealthHandler) Liveness(w http.ResponseWriter, r *http.Request) {
@@ -24,7 +24,8 @@ func (h *HealthHandler) Readiness(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 
-	if err := h.pool.Ping(ctx); err != nil {
+	sqlDB, err := h.db.DB()
+	if err != nil || sqlDB.PingContext(ctx) != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}

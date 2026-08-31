@@ -52,14 +52,18 @@ func run() error {
 		}
 	}()
 
-	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
+	db, err := postgres.NewGormDB(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}
-	defer pool.Close()
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+	defer sqlDB.Close()
 
-	userRepo := postgres.NewUserRepository(pool)
-	refreshTokenRepo := postgres.NewRefreshTokenRepository(pool)
+	userRepo := postgres.NewUserRepository(db)
+	refreshTokenRepo := postgres.NewRefreshTokenRepository(db)
 	hasher := hash.NewBcryptHasher()
 
 	privateKey, err := authjwt.LoadOrGenerateKeyPair(cfg.JWTPrivateKeyPath, cfg.JWTPublicKeyPath)
@@ -99,7 +103,7 @@ func run() error {
 		JWKS:        jwksHandler,
 		BulkCreate:  handler.NewBulkCreateHandler(bulkCreateUC),
 		AddRole:     handler.NewAddRoleHandler(addRoleUC),
-		Health:      handler.NewHealthHandler(pool),
+		Health:      handler.NewHealthHandler(db),
 		AdminAPIKey: cfg.AdminAPIKey,
 		Verifier:    verifier,
 	})

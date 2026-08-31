@@ -4,7 +4,7 @@ Serviço de autenticação do [OrderHub](https://github.com/Adriano-silva131/ord
 
 ## Por que existe
 
-O `api-gateway` do OrderHub validava tokens emitidos pelo Keycloak. Trocamos o Keycloak por este serviço próprio — mesma responsabilidade (autenticar usuários, emitir tokens verificáveis), mas escrito do zero, e mais uma peça de portfólio consistente com o [`payment-service-go`](../payment-service-go) (mesma stack, mesmos padrões de Clean Architecture).
+O `api-gateway` do OrderHub validava tokens emitidos pelo Keycloak. Trocamos o Keycloak por este serviço próprio — mesma responsabilidade (autenticar usuários, emitir tokens verificáveis), mas escrito do zero, e mais uma peça de portfólio consistente com o [`payment-service-go`](https://github.com/Adriano-silva131/payment-service-go) (mesma stack, mesmos padrões de Clean Architecture).
 
 **Login por senha só, por enquanto.** "Sign in with Google" está planejado pra quando o frontend for estruturado (login social exige uma superfície de navegador pro consentimento — não dá pra fazer só via terminal). A coluna `password_hash` já é opcional no schema (`users.password_hash NULLABLE`) pra esse dia não exigir uma migration disruptiva — um usuário criado via Google simplesmente não teria hash de senha.
 
@@ -18,9 +18,11 @@ internal/domain              User, RefreshToken — zero imports externos
 internal/usecase              Register, Login, RefreshAccessToken, Logout, CreateUsersBulk, AddRole + portas
 internal/adapter/
   http                       chi router, handlers, middleware (AdminAPIKey, RequireAuth)
-  postgres                   repositórios via pgx
+  postgres                   repositórios via GORM (Postgres driver)
   jwt                        geração/carga de chave RSA, emissor RS256, verificador, encoder JWKS
   hash                       bcrypt
+  logging                    slog.Handler que correlaciona logs com trace_id/span_id
+  otel                       setup do tracer provider (exporter OTLP/gRPC)
 migrations/                  golang-migrate
 ```
 
@@ -39,7 +41,7 @@ migrations/                  golang-migrate
 | POST | `/auth/refresh` | — | `{refresh_token}` → novo par (o antigo é revogado — rotação) |
 | POST | `/auth/logout` | — | `{refresh_token}` → revoga (idempotente) |
 | GET | `/.well-known/jwks.json` | — | chave pública em formato JWK, pro `api-gateway` validar assinatura |
-| POST | `/admin/users/bulk` | header `X-Admin-Api-Key` | criação em lote — usado pelo `k6/create-users.sh` |
+| POST | `/admin/users/bulk` | header `X-Admin-Api-Key` | criação em lote — usado pelo `k6/create-users.sh` do [`order-hub-application`](https://github.com/Adriano-silva131/order-hub-application) |
 | POST | `/users/me/roles` | Bearer JWT | `{role}` → adiciona uma role à conta autenticada (hoje só `SELLER`; idempotente) |
 | GET | `/healthz`, `/readyz`, `/metrics` | — | infra padrão |
 
