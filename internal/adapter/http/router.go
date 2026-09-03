@@ -31,14 +31,18 @@ func tracingMiddleware() func(http.Handler) http.Handler {
 }
 
 type RouterDeps struct {
-	Register   *handler.RegisterHandler
-	Login      *handler.LoginHandler
-	Refresh    *handler.RefreshHandler
-	Logout     *handler.LogoutHandler
-	JWKS       *handler.JWKSHandler
-	BulkCreate *handler.BulkCreateHandler
-	AddRole    *handler.AddRoleHandler
-	Health     *handler.HealthHandler
+	Register            *handler.RegisterHandler
+	Login               *handler.LoginHandler
+	Refresh             *handler.RefreshHandler
+	Logout              *handler.LogoutHandler
+	RequestCode         *handler.RequestCodeHandler
+	VerifyCode          *handler.VerifyCodeHandler
+	StartGoogleOAuth    *handler.StartGoogleOAuthHandler
+	CompleteGoogleOAuth *handler.CompleteGoogleOAuthHandler
+	JWKS                *handler.JWKSHandler
+	BulkCreate          *handler.BulkCreateHandler
+	AddRole             *handler.AddRoleHandler
+	Health              *handler.HealthHandler
 
 	AdminAPIKey string
 	Verifier    *authjwt.Verifier
@@ -59,6 +63,12 @@ func NewRouter(deps RouterDeps) http.Handler {
 		r.Post("/login", deps.Login.ServeHTTP)
 		r.Post("/refresh", deps.Refresh.ServeHTTP)
 		r.Post("/logout", deps.Logout.ServeHTTP)
+		r.Post("/request-code", deps.RequestCode.ServeHTTP)
+		r.Post("/verify-code", deps.VerifyCode.ServeHTTP)
+		r.Route("/oauth/google", func(r chi.Router) {
+			r.Get("/start", deps.StartGoogleOAuth.ServeHTTP)
+			r.Post("/callback", deps.CompleteGoogleOAuth.ServeHTTP)
+		})
 	})
 
 	r.Route("/admin", func(r chi.Router) {

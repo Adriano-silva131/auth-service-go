@@ -16,11 +16,23 @@ import (
 	"github.com/adriano-linux/auth-service-go/internal/adapter/http/handler"
 	authjwt "github.com/adriano-linux/auth-service-go/internal/adapter/jwt"
 	"github.com/adriano-linux/auth-service-go/internal/adapter/logging"
+	"github.com/adriano-linux/auth-service-go/internal/adapter/mail"
+	"github.com/adriano-linux/auth-service-go/internal/adapter/oauth"
 	oteladapter "github.com/adriano-linux/auth-service-go/internal/adapter/otel"
 	"github.com/adriano-linux/auth-service-go/internal/adapter/postgres"
 	"github.com/adriano-linux/auth-service-go/internal/config"
 	"github.com/adriano-linux/auth-service-go/internal/usecase"
 )
+
+// codeSender chooses SMTP delivery when configured, console logging
+// otherwise — see adapter/mail for why local dev needs a fallback.
+func codeSender(cfg *config.Config) usecase.CodeSender {
+	if cfg.SMTPHost == "" {
+		slog.Warn("SMTP_HOST not set — verification codes will be logged, not emailed")
+		return mail.NewConsoleSender()
+	}
+	return mail.NewSMTPSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUsername, cfg.SMTPPassword, cfg.MailFrom)
+}
 
 func main() {
 	slog.SetDefault(slog.New(logging.NewTraceHandler(slog.NewJSONHandler(os.Stdout, nil))))
@@ -64,6 +76,7 @@ func run() error {
 
 	userRepo := postgres.NewUserRepository(db)
 	refreshTokenRepo := postgres.NewRefreshTokenRepository(db)
+	verificationCodeRepo := postgres.NewVerificationCodeRepository(db)
 	hasher := hash.NewBcryptHasher()
 
 	privateKey, err := authjwt.LoadOrGenerateKeyPair(cfg.JWTPrivateKeyPath, cfg.JWTPublicKeyPath)
@@ -87,6 +100,12 @@ func run() error {
 	logoutUC := usecase.NewLogout(refreshTokenRepo, issuer)
 	bulkCreateUC := usecase.NewCreateUsersBulk(registerUC)
 	addRoleUC := usecase.NewAddRole(userRepo)
+	requestCodeUC := usecase.NewRequestCode(verificationCodeRepo, codeSender(cfg))
+	verifyCodeUC := usecase.NewVerifyCode(verificationCodeRepo, userRepo, refreshTokenRepo, issuer)
+
+	googleProvider := oauth.NewGoogleProvider(cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.GoogleRedirectURI)
+	startGoogleOAuthUC := usecase.NewStartGoogleOAuth(googleProvider, cfg.GoogleClientSecret)
+	completeGoogleOAuthUC := usecase.NewCompleteGoogleOAuth(googleProvider, cfg.GoogleClientSecret, userRepo, refreshTokenRepo, issuer)
 
 	jwksHandler, err := handler.NewJWKSHandler(authjwt.BuildJWKSet(&privateKey.PublicKey, kid))
 	if err != nil {
@@ -96,16 +115,20 @@ func run() error {
 	verifier := authjwt.NewVerifier(&privateKey.PublicKey)
 
 	router := httptransport.NewRouter(httptransport.RouterDeps{
-		Register:    handler.NewRegisterHandler(registerUC),
-		Login:       handler.NewLoginHandler(loginUC),
-		Refresh:     handler.NewRefreshHandler(refreshUC),
-		Logout:      handler.NewLogoutHandler(logoutUC),
-		JWKS:        jwksHandler,
-		BulkCreate:  handler.NewBulkCreateHandler(bulkCreateUC),
-		AddRole:     handler.NewAddRoleHandler(addRoleUC),
-		Health:      handler.NewHealthHandler(db),
-		AdminAPIKey: cfg.AdminAPIKey,
-		Verifier:    verifier,
+		Register:            handler.NewRegisterHandler(registerUC),
+		Login:               handler.NewLoginHandler(loginUC),
+		Refresh:             handler.NewRefreshHandler(refreshUC),
+		Logout:              handler.NewLogoutHandler(logoutUC),
+		RequestCode:         handler.NewRequestCodeHandler(requestCodeUC),
+		VerifyCode:          handler.NewVerifyCodeHandler(verifyCodeUC),
+		StartGoogleOAuth:    handler.NewStartGoogleOAuthHandler(startGoogleOAuthUC),
+		CompleteGoogleOAuth: handler.NewCompleteGoogleOAuthHandler(completeGoogleOAuthUC),
+		JWKS:                jwksHandler,
+		BulkCreate:          handler.NewBulkCreateHandler(bulkCreateUC),
+		AddRole:             handler.NewAddRoleHandler(addRoleUC),
+		Health:              handler.NewHealthHandler(db),
+		AdminAPIKey:         cfg.AdminAPIKey,
+		Verifier:            verifier,
 	})
 
 	server := &http.Server{

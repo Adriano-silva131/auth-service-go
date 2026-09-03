@@ -23,6 +23,38 @@ type RefreshTokenRepository interface {
 	Revoke(ctx context.Context, id uuid.UUID) error
 }
 
+type VerificationCodeRepository interface {
+	Insert(ctx context.Context, c *domain.VerificationCode) error
+	// FindLatestByEmail returns domain.ErrCodeNotFound when none exists.
+	FindLatestByEmail(ctx context.Context, email string) (*domain.VerificationCode, error)
+	IncrementAttempts(ctx context.Context, id uuid.UUID) error
+	MarkConsumed(ctx context.Context, id uuid.UUID) error
+}
+
+// CodeSender delivers a verification code to the user — email in production,
+// console logging in local dev when no SMTP is configured.
+type CodeSender interface {
+	SendVerificationCode(ctx context.Context, email, code string) error
+}
+
+// GoogleIdentity is what Google vouches for once the code-for-token exchange
+// succeeds. EmailVerified comes straight from Google — a Google account can
+// exist on an unverified email, and that's not enough to trust for login.
+type GoogleIdentity struct {
+	Email         string
+	EmailVerified bool
+	Name          string
+}
+
+// GoogleOAuthProvider builds the consent-screen URL and performs the
+// authorization-code-for-token exchange server-to-server with Google. Because
+// the exchange is authenticated with our client secret, the identity it
+// returns is trusted without needing to separately verify a JWT signature.
+type GoogleOAuthProvider interface {
+	AuthorizeURL(state string) string
+	Exchange(ctx context.Context, code string) (GoogleIdentity, error)
+}
+
 // PasswordHasher isolates the hashing algorithm (bcrypt) from the usecase layer.
 type PasswordHasher interface {
 	Hash(password string) (string, error)

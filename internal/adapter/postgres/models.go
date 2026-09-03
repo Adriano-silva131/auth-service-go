@@ -48,6 +48,42 @@ func toDomainUser(m *userModel) *domain.User {
 	}
 }
 
+type verificationCodeModel struct {
+	ID         uuid.UUID `gorm:"type:uuid;primaryKey"`
+	Email      string    `gorm:"not null;index"`
+	CodeHash   string    `gorm:"not null"`
+	ExpiresAt  time.Time `gorm:"not null"`
+	ConsumedAt *time.Time
+	Attempts   int `gorm:"not null;default:0"`
+	CreatedAt  time.Time
+}
+
+func (verificationCodeModel) TableName() string { return "verification_codes" }
+
+func fromDomainVerificationCode(c *domain.VerificationCode) verificationCodeModel {
+	return verificationCodeModel{
+		ID:         c.ID,
+		Email:      c.Email,
+		CodeHash:   c.CodeHash,
+		ExpiresAt:  c.ExpiresAt,
+		ConsumedAt: c.ConsumedAt,
+		Attempts:   c.Attempts,
+		CreatedAt:  c.CreatedAt,
+	}
+}
+
+func toDomainVerificationCode(m *verificationCodeModel) *domain.VerificationCode {
+	return &domain.VerificationCode{
+		ID:         m.ID,
+		Email:      m.Email,
+		CodeHash:   m.CodeHash,
+		ExpiresAt:  m.ExpiresAt,
+		ConsumedAt: m.ConsumedAt,
+		Attempts:   m.Attempts,
+		CreatedAt:  m.CreatedAt,
+	}
+}
+
 type refreshTokenModel struct {
 	ID        uuid.UUID `gorm:"type:uuid;primaryKey"`
 	UserID    uuid.UUID `gorm:"type:uuid;not null;index"`
